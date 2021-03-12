@@ -23,7 +23,7 @@ difference() {
             translate([0, 22.5]) rounded_rect([100, 10], 3);
             translate([-40, 35]) honeycomb();
         }
-        translate([0, -(controller_hole_spacing.y/2 + 15)]) difference() {
+        translate([0, -(controller_hole_spacing.y/2 + 17.5)]) difference() {
             rounded_rect([110 + 20 + 20, 12.5], 3);
             translate([+controller_hole_spacing.x/2 + 20, 0]) circle(d=6.0);
             translate([-controller_hole_spacing.x/2 - 20, 0]) circle(d=6.0);

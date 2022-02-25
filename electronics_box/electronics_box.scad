@@ -21,23 +21,21 @@ total_size = [
 controller_offset = [(total_size.x-controller_size.x)/2, 12]; // mm
 breadboard_offset = [total_size.x-breadboard_size.x-20, total_size.y-breadboard_size.y-5]; // mm
 
+rpi_plate_size = [rpi_hole_spacing.x+31, controller_size.y-10];
+rpi_plate_offset = [controller_size.x-rpi_plate_size.x, controller_size.y];
+rpi_offset = [65, rpi_hole_spacing.y/2 + 25.5];
+
 standoff_hole_d = 2.7; // mm
 
 echo(total_size / 25.4);
+echo(total_size);
 
 outer_standoff_hole_offset = 5; // mm
 
-// TODO m5 mounting holes
-// TODO rough idea of outer cage
-// TODO speed holes
-
-module quarter_ring(id, od) {
-    intersection() {
-        difference() {
-            circle(d=od);
-            circle(d=id);
-        }
-        square([od,od]);
+module ring(id, od) {
+    difference() {
+        circle(d=od);
+        circle(d=id);
     }
 }
 
@@ -80,6 +78,12 @@ module standoff_hole_cutout() {
     translate([0,0,countersink_depth]) cylinder(plate_thickness - countersink_depth, d=standoff_hole_d);
 }
 
+module standoff_hole_cutout_inverted() {
+    countersink_depth = 1.8; // mm
+    cylinder(plate_thickness - countersink_depth, d=standoff_hole_d);
+    translate([0,0,plate_thickness - countersink_depth]) cylinder(countersink_depth, d=4.2);
+}
+
 module m5_hole_cutout() {
     countersink_depth = plate_thickness/2; // mm
     cylinder(plate_thickness - countersink_depth, d=5.2);
@@ -92,6 +96,8 @@ module controller_cutout() {
         translate([+controller_hole_spacing.x/2, -controller_hole_spacing.y/2]) standoff_hole_cutout();
         translate([-controller_hole_spacing.x/2, +controller_hole_spacing.y/2]) standoff_hole_cutout();
         translate([-controller_hole_spacing.x/2, -controller_hole_spacing.y/2]) standoff_hole_cutout();
+        translate([+controller_hole_spacing.x/2, +controller_hole_spacing.y*1.5]) standoff_hole_cutout();
+        translate([-controller_hole_spacing.x/2 + rpi_plate_offset.x, +controller_hole_spacing.y*1.5]) standoff_hole_cutout();
     }
 }
 
@@ -101,9 +107,27 @@ module breadboard_cutout() {
     }
 }
 
+module honeycomb(hexagon_d, linewidth, rows, cols, fillet=0) {
+    x_spacing = 2*(hexagon_d/2)*cos(30)+linewidth;
+    y_spacing = tan(60)*x_spacing/2;
+    for (j = [0:rows-1]) {
+        hex_offset = (j % 2 == 0) ? 0 : x_spacing/2;
+        extra = (j % 2 == 0) ? 0 : 1;
+        for (i = [0:cols-1+extra]) {
+            translate([i*x_spacing - hex_offset, j*y_spacing]) rotate(90) offset(r=+fillet) offset(delta=-fillet) circle(d=hexagon_d, $fn=6);
+        }
+    }
+}
+
 module bottom_plate() {
     difference() {
-        translate(total_size/2) linear_extrude(total_size.z, center=true) rounded_rect(total_size, 3);
+        linear_extrude(total_size.z)
+        offset(r=-3) offset(delta=+3)
+        offset(r=+3) offset(delta=-3) {
+            square([total_size.x,total_size.y]);
+            translate([-10, total_size.y/2]) square([20,20], center=true);
+            translate([total_size.x+10, total_size.y/2]) square([20,20], center=true);
+        }
         // outer standoff holes
         union() {
             translate([outer_standoff_hole_offset, outer_standoff_hole_offset, 0]) standoff_hole_cutout();
@@ -113,58 +137,140 @@ module bottom_plate() {
         }
         // controller mount holes
         translate(controller_offset) controller_cutout();
+        // breadboard slot
         translate(breadboard_offset) breadboard_cutout();
-        // rpi mount holes
-        *union() {
-            translate([total_size.x - rpi_outer_gap.x, total_size.y/2 - rpi_hole_spacing.y/2]) standoff_hole_cutout();
-            translate([total_size.x - rpi_outer_gap.x, total_size.y/2 + rpi_hole_spacing.y/2]) standoff_hole_cutout();
-            translate([total_size.x - rpi_outer_gap.x - rpi_hole_spacing.x, total_size.y/2 - rpi_hole_spacing.y/2]) standoff_hole_cutout();
-            translate([total_size.x - rpi_outer_gap.x - rpi_hole_spacing.x, total_size.y/2 + rpi_hole_spacing.y/2]) standoff_hole_cutout();
-        }
-        *union() {
-            translate([controller_offset.x+5, total_size.y/2]) m5_hole_cutout();
-            translate([controller_offset.x+controller_size.x-5, total_size.y/2]) m5_hole_cutout();
-            translate([total_size.x-20, total_size.y/2]) m5_hole_cutout();
+        // mounting holes
+        union() {
+            translate([-10, total_size.y/2]) m5_hole_cutout();
+            translate([total_size.x+10, total_size.y/2]) m5_hole_cutout();
         }
     }
     // locating pins
-    *translate([0,0,plate_thickness]) union() {
-        translate([2.5,2.5,0])                             cylinder(2, d1=2, d2=1.9);
-        translate([2.5,total_size.y-2.5,0])                cylinder(2, d1=2, d2=1.9);
-        translate([total_size.x - 2.5,2.5,0])              cylinder(2, d1=2, d2=1.9);
-        translate([total_size.x - 2.5,total_size.y-2.5,0]) cylinder(2, d1=2, d2=1.9);
-        translate([total_size.x/2,2.5])                    cylinder(2, d1=2, d2=1.9);
-        translate([total_size.x/2,total_size.y-2.5])       cylinder(2, d1=2, d2=1.9);
-        translate([2.5,total_size.y/2])                    cylinder(2, d1=2, d2=1.9);
-        translate([total_size.x-2.5,total_size.y/2])       cylinder(2, d1=2, d2=1.9);
+    translate([0,0,total_size.z]) linear_extrude(plate_thickness/2) union() {
+        translate([outer_standoff_hole_offset, outer_standoff_hole_offset]) ring(7.5,8.5);
+        translate([total_size.x - outer_standoff_hole_offset, outer_standoff_hole_offset, 0]) ring(7.5,8.5);
+        translate([outer_standoff_hole_offset, total_size.y - outer_standoff_hole_offset, 0]) ring(7.5,8.5);
+        translate([total_size.x - outer_standoff_hole_offset, total_size.y - outer_standoff_hole_offset, 0]) ring(7.5,8.5);
+    }
+}
+
+module bottom_plate_with_cutouts() {
+    difference() {
+        bottom_plate();
+        linear_extrude(plate_thickness) intersection() {
+            offset(r=+3) offset(delta=-3)
+            offset(r=-3) offset(delta=+3)
+            union() {
+                polygon([
+                    [20,10],
+                    [total_size.x-20,10],
+                    [total_size.x-20,30],
+                    [40,30],
+                    [40,90],
+                    [20,90],
+                    [20,10]
+                ]);
+                polygon([
+                    [10,25],
+                    [20,25],
+                    [20,50],
+                    [10,50],
+                    [10,25]
+                ]);
+                polygon([
+                    [10,65],
+                    [20,65],
+                    [20,90],
+                    [10,90],
+                    [10,65]
+                ]);
+                polygon([
+                    [10,90],
+                    [30,90],
+                    [30,total_size.y-10],
+                    [10,total_size.y-10],
+                    [10,90]
+                ]);
+                gap = 5;
+                polygon([
+                    [breadboard_offset.x+gap, breadboard_offset.y+gap],
+                    [breadboard_offset.x+breadboard_size.x-gap, breadboard_offset.y+gap],
+                    [breadboard_offset.x+breadboard_size.x-gap, breadboard_offset.y+breadboard_size.y-gap],
+                    [breadboard_offset.x+gap, breadboard_offset.y+breadboard_size.y-gap],
+                    [breadboard_offset.x+gap, breadboard_offset.y+gap]
+                ]);
+            }
+            honeycomb(10,1,15,15,1);
+        }
     }
 }
 
 module middle_plate() {
-    rpi_plate_size = rpi_hole_spacing + [6,6];
-    rpi_plate_offset_x = controller_size.x-rpi_plate_size.x-12.5;
-    rpi_plate_offset_y = 22.5;
-    linear_extrude(plate_thickness) difference() {
-        offset(r=+3) offset(delta=-3)
-        offset(r=-3) offset(delta=+3)
-        union() {
-            difference() {
+    difference() {
+        linear_extrude(plate_thickness) difference() {
+            offset(r=+3) offset(delta=-3)
+            offset(r=-3) offset(delta=+3)
+            union() {
                 square(controller_size);
-                /* translate([rpi_plate_offset_x-3,0]) square([rpi_plate_size.x+6,controller_size.y]); */
+                translate(rpi_plate_offset) square(rpi_plate_size);
             }
-            translate([rpi_plate_offset_x,rpi_plate_offset_y]) square(rpi_plate_size);
+            translate(controller_size/2) union() {
+                translate([+controller_hole_spacing.x/2, +controller_hole_spacing.y/2]) circle(d=standoff_hole_d);
+                translate([+controller_hole_spacing.x/2, -controller_hole_spacing.y/2]) circle(d=standoff_hole_d);
+                translate([-controller_hole_spacing.x/2, +controller_hole_spacing.y/2]) circle(d=standoff_hole_d);
+                translate([-controller_hole_spacing.x/2, -controller_hole_spacing.y/2]) circle(d=standoff_hole_d);
+            }
         }
         translate(controller_size/2) union() {
-            translate([+controller_hole_spacing.x/2, +controller_hole_spacing.y/2]) circle(d=standoff_hole_d);
-            translate([+controller_hole_spacing.x/2, -controller_hole_spacing.y/2]) circle(d=standoff_hole_d);
-            translate([-controller_hole_spacing.x/2, +controller_hole_spacing.y/2]) circle(d=standoff_hole_d);
-            translate([-controller_hole_spacing.x/2, -controller_hole_spacing.y/2]) circle(d=standoff_hole_d);
+            translate([+controller_hole_spacing.x/2, +controller_hole_spacing.y*1.5]) standoff_hole_cutout_inverted();
+            translate([-controller_hole_spacing.x/2 + rpi_plate_offset.x, +controller_hole_spacing.y*1.5]) standoff_hole_cutout_inverted();
         }
-        translate(rpi_plate_size/2 + [rpi_plate_offset_x,rpi_plate_offset_y]) {
-            translate([+rpi_hole_spacing.x/2, +rpi_hole_spacing.y/2]) circle(d=standoff_hole_d);
-            translate([+rpi_hole_spacing.x/2, -rpi_hole_spacing.y/2]) circle(d=standoff_hole_d);
-            translate([-rpi_hole_spacing.x/2, +rpi_hole_spacing.y/2]) circle(d=standoff_hole_d);
-            translate([-rpi_hole_spacing.x/2, -rpi_hole_spacing.y/2]) circle(d=standoff_hole_d);
+        translate(rpi_offset) {
+            translate([+rpi_hole_spacing.x/2, +rpi_hole_spacing.y/2]) standoff_hole_cutout_inverted();
+            translate([+rpi_hole_spacing.x/2, -rpi_hole_spacing.y/2]) standoff_hole_cutout_inverted();
+            translate([-rpi_hole_spacing.x/2, +rpi_hole_spacing.y/2]) standoff_hole_cutout_inverted();
+            translate([-rpi_hole_spacing.x/2, -rpi_hole_spacing.y/2]) standoff_hole_cutout_inverted();
+        }
+    }
+}
+
+module middle_plate_with_cutouts() {
+    difference() {
+        middle_plate();
+        linear_extrude(plate_thickness) intersection() {
+            offset(r=+3) offset(delta=-3)
+            offset(r=-3) offset(delta=+3)
+            union() {
+                polygon([
+                    [10,10],
+                    [105-10,10],
+                    [105-10,20],
+                    [10,20],
+                    [10,10]
+                ]);
+                polygon([
+                    [45,40],
+                    [85,40],
+                    [85,80],
+                    [45,80],
+                    [45,40]
+                ]);
+                polygon([
+                    [35,30],
+                    [105-10,30],
+                    [105-10,80],
+                    [35,80],
+                    [35,30]
+                ]);
+                polygon([
+                    [10,30],
+                    [45,30],
+                    [45,40],
+                    [10,40],
+                    [10,40]
+                ]);
+            }
+            honeycomb(10,1,15,15,1);
         }
     }
 }
@@ -219,9 +325,9 @@ module side_plate2() {
     }
 }
 
-bottom_plate();
-translate(concat(controller_offset, plate_thickness+30)) color("Yellow") middle_plate();
-translate([0,0,plate_thickness]) color("Lime") side_plate2();
+bottom_plate_with_cutouts();
+translate(concat(controller_offset, plate_thickness+30)) color("Yellow") middle_plate_with_cutouts();
+%translate([0,0,plate_thickness+3]) side_plate2();
 *translate([0,0,-plate_thickness]) color("Lime") side_plate();
 
 %translate([102,102,29]) rotate([180,0,-90]) rpi3();
@@ -236,6 +342,8 @@ translate([0,0,plate_thickness]) color("Lime") side_plate2();
         translate([+controller_hole_spacing.x/2, -controller_hole_spacing.y/2]) standoff(20+10);
         translate([-controller_hole_spacing.x/2, +controller_hole_spacing.y/2]) standoff(20+10);
         translate([-controller_hole_spacing.x/2, -controller_hole_spacing.y/2]) standoff(20+10);
+        translate([+controller_hole_spacing.x/2, +controller_hole_spacing.y*1.5]) standoff(20+10);
+        translate([-controller_hole_spacing.x/2 + rpi_plate_offset.x, +controller_hole_spacing.y*1.5]) standoff(20+10);
     }
     translate([0,0,2*plate_thickness+30]) union() {
         translate([+controller_hole_spacing.x/2, +controller_hole_spacing.y/2]) standoff(6);
